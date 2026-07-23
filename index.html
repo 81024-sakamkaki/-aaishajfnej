@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>【公式】わたしの民泊 | 和みの宿</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Noto Serif JP', serif, sans-serif;
+            background-color: #fcfbf9; /* 温かみのある和の生成り色 */
+            color: #2b2b2b;
+        }
+
+        /* ふわーっと浮き出るアニメーション */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .fade-in.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* トップのスライドショー用CSS */
+        .hero-slide {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0;
+            transition: opacity 2s ease-in-out;
+        }
+        .hero-slide.active {
+            opacity: 1;
+        }
+
+        /* 管理者モード時の編集枠表示 */
+        body.is-admin .admin-editable-text {
+            outline: 2px dashed #b45309;
+            outline-offset: 4px;
+            cursor: pointer;
+            position: relative;
+        }
+        body.is-admin .admin-editable-text:hover {
+            background-color: rgba(180, 83, 9, 0.08);
+        }
+        body.is-admin .hero-slideshow-container {
+            cursor: pointer;
+            position: relative;
+        }
+        body.is-admin .hero-slideshow-container::after {
+            content: "📷 トップ写真(スライドショー)を変更";
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(20, 20, 20, 0.85);
+            color: #fff;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 6px;
+            z-index: 40;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        body.is-admin .admin-editable-img-container {
+            position: relative;
+            cursor: pointer;
+        }
+        body.is-admin .admin-editable-img-container::after {
+            content: "📷 写真を変更";
+            position: absolute;
+            inset: 0;
+            background: rgba(20, 20, 20, 0.65);
+            color: #fff;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            border-radius: inherit;
+        }
+        body.is-admin .admin-editable-img-container:hover::after {
+            opacity: 1;
+        }
+        /* ドラッグ可能であることを示す枠 */
+        body.is-admin .draggable-section {
+            border: 2px dashed #3b82f6 !important;
+            position: relative;
+            margin-top: 10px;
+            margin-bottom: 10px;
+        }
+        body.is-admin .draggable-section::before {
+            content: "⋮⋮ 並び替え用ハンドル";
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: #3b82f6;
+            color: white;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: move;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-amber-100">
+
+    <div id="admin-modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
+        <div class="bg-amber-50 p-8 rounded-xl shadow-2xl max-w-md w-full border border-amber-200">
+            <h2 class="text-2xl font-bold text-slate-800 mb-2 text-center">🔐 管理者ログイン</h2>
+            <p class="text-xs text-slate-600 mb-6 text-center">パスワードを入力すると、画面上で直接文章・写真を編集・並び替えできます。</p>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <input type="password" id="login-password" placeholder="パスワードを入力" class="w-full px-4 py-3 rounded-md border border-amber-300 focus:ring-2 focus:ring-amber-700 outline-none bg-white">
+                <p id="login-error" class="text-rose-600 text-xs hidden">パスワードが違います。</p>
+                <div class="flex gap-2">
+                    <button type="submit" class="flex-1 bg-amber-800 text-white font-bold py-3 rounded-md hover:bg-amber-900 transition">ログイン</button>
+                    <button type="button" onclick="closeAdminModal()" class="px-4 bg-stone-200 text-slate-700 rounded-md font-medium">閉じる</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="admin-bar" class="hidden bg-stone-900 text-amber-100 px-6 py-3 sticky top-0 z-[60] shadow-md flex justify-between items-center text-sm font-sans">
+        <div class="flex items-center gap-3">
+            <span class="bg-amber-700 text-white text-xs font-bold px-2.5 py-1 rounded">編集モード中</span>
+            <span>文字・写真を直接タップして変更／青枠をドラッグして上下に入れ替え可能</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="saveChanges()" class="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-5 py-1.5 rounded transition">💾 保存する</button>
+            <button onclick="handleLogout()" class="bg-stone-700 hover:bg-stone-600 text-xs px-3 py-1.5 rounded">ログアウト</button>
+        </div>
+    </div>
+
+    <header class="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50 border-b border-stone-200">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+            <a href="#" class="text-xl font-bold text-slate-900 tracking-widest flex items-center gap-2">
+                🏠 <span id="site-title" class="admin-editable-text" onclick="editSingleText('site-title', '宿の名称')">わたしの民泊</span>
+            </a>
+            <nav class="flex items-center gap-8 text-sm tracking-wider font-medium">
+                <a href="#about" class="hover:text-amber-800 transition">当宿について</a>
+                <a href="#facility" class="hover:text-amber-800 transition">お部屋・設備</a>
+                <a href="#location" class="hover:text-amber-800 transition">場所・案内</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="flex-grow">
+        
+        <div id="hero-slideshow" class="hero-slideshow-container relative w-full h-screen overflow-hidden bg-black" onclick="editHeroSlides()">
+            <div id="slide-1" class="hero-slide active" style="background-image: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35)), url('https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1600&q=80');"></div>
+            <div id="slide-2" class="hero-slide" style="background-image: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35)), url('https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1600&q=80');"></div>
+            <div id="slide-3" class="hero-slide" style="background-image: linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35)), url('https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=1600&q=80');"></div>
+
+            <div class="absolute bottom-12 left-1/2 transform -translate-x-1/2 flex flex-col items-center animate-bounce z-10">
+                <span class="text-xs uppercase tracking-[0.3em] text-stone-200 mb-3 font-sans">SCROLL</span>
+                <div class="w-5 h-9 border border-white/70 rounded-full flex justify-center pt-2">
+                    <div class="w-1 h-2.5 bg-white rounded-full"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="max-w-5xl mx-auto px-4 py-20 space-y-28" id="content-sections">
+
+            <section class="fade-in text-center space-y-8 draggable-section py-4">
+                <div class="inline-block border-y-2 border-amber-900/20 py-6 px-8">
+                    <h1 id="hero-title" class="admin-editable-text text-3xl sm:text-5xl font-bold text-slate-800 tracking-wider mb-4" onclick="editSingleText('hero-title', 'メインタイトル')">下北の旬と安らぎを味わう宿</h1>
+                    <p id="hero-subtitle" class="admin-editable-text text-base sm:text-lg text-stone-600 max-w-2xl mx-auto leading-relaxed" onclick="editSingleText('hero-subtitle', 'サブタイトル')">海の恵みと温かいおもてなしでお迎えいたします。ご予約はお電話にて承ります。</p>
+                </div>
+                
+                <div>
+                    <div class="bg-amber-900 text-amber-50 p-8 rounded-lg shadow-lg inline-block max-w-md w-full border border-amber-800">
+                        <p class="text-xs tracking-widest uppercase mb-2 text-amber-200">RESERVATION</p>
+                        <p class="text-sm font-semibold mb-4">お電話でのご予約・お問い合わせ</p>
+                        <a id="phone-link" href="tel:09012345678" class="inline-flex items-center justify-center gap-3 bg-amber-100 hover:bg-white text-slate-900 font-bold px-8 py-3.5 rounded text-2xl shadow transition w-full">
+                            📞 <span id="phone-number" class="admin-editable-text font-sans" onclick="editPhoneNumber(event)">090-1234-5678</span>
+                        </a>
+                        <p id="phone-hours" class="admin-editable-text text-xs text-amber-200/80 mt-4 tracking-wider" onclick="editSingleText('phone-hours', '電話受付時間')">受付時間: 9:00 〜 20:00</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="about" class="fade-in bg-white p-8 sm:p-14 rounded-lg shadow-sm border border-stone-200 draggable-section">
+                <div class="text-center mb-8">
+                    <span class="text-amber-800 font-bold text-xs tracking-[0.2em] uppercase">ABOUT US</span>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-800 mt-2">当宿のご紹介</h2>
+                    <div class="w-12 h-0.5 bg-amber-800/40 mx-auto mt-4"></div>
+                </div>
+                <p id="about-text" class="admin-editable-text text-stone-700 leading-loose max-w-3xl mx-auto whitespace-pre-line text-lg text-justify" onclick="editSingleText('about-text', '宿のご紹介文')">四季折々の豊かな自然と、地元の新鮮な食材をご用意してお待ちしております。
+日常の喧騒から離れ、ゆったりとした和の空間で心安らぐひとときをお過ごしください。
+ご家族やグループでのご滞在にも最適な温かいおもてなしをご提供いたします。</p>
+            </section>
+
+            <section id="facility" class="fade-in scroll-mt-24 draggable-section">
+                <div class="text-center mb-12">
+                    <span class="text-amber-800 font-bold text-xs tracking-[0.2em] uppercase">ROOMS & FACILITY</span>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-800 mt-2">お部屋・館内施設のご案内</h2>
+                    <div class="w-12 h-0.5 bg-amber-800/40 mx-auto mt-4"></div>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="bg-white rounded-lg shadow-sm border border-stone-200 overflow-hidden">
+                        <div class="admin-editable-img-container h-56" onclick="editCardImg('facility-img-1', 'お部屋画像1')">
+                            <img id="facility-img-1" src="https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover">
+                        </div>
+                        <div class="p-6">
+                            <h3 id="facility-title-1" class="admin-editable-text font-bold text-lg mb-2 text-slate-800" onclick="editSingleText('facility-title-1', '施設名')">落ち着きのある和室</h3>
+                            <p id="facility-desc-1" class="admin-editable-text text-stone-600 text-sm leading-relaxed" onclick="editSingleText('facility-desc-1', '説明文')">い草の香る居心地の良い空間。ゆったりと寛げる伝統的なお部屋です。</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm border border-stone-200 overflow-hidden">
+                        <div class="admin-editable-img-container h-56" onclick="editCardImg('facility-img-2', 'お料理・厨房画像')">
+                            <img id="facility-img-2" src="https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover">
+                        </div>
+                        <div class="p-6">
+                            <h3 id="facility-title-2" class="admin-editable-text font-bold text-lg mb-2 text-slate-800" onclick="editSingleText('facility-title-2', '施設名')">地元の味覚とお食事処</h3>
+                            <p id="facility-desc-2" class="admin-editable-text text-stone-600 text-sm leading-relaxed" onclick="editSingleText('facility-desc-2', '説明文')">旬の山海の幸をふんだんに取り入れた手作りのお料理をお楽しみいただけます。</p>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow-sm border border-stone-200 overflow-hidden">
+                        <div class="admin-editable-img-container h-56" onclick="editCardImg('facility-img-3', 'お風呂画像')">
+                            <img id="facility-img-3" src="https://images.unsplash.com/photo-1616594039964-ae9021a400a0?auto=format&fit=crop&w=600&q=80" class="w-full h-full object-cover">
+                        </div>
+                        <div class="p-6">
+                            <h3 id="facility-title-3" class="admin-editable-text font-bold text-lg mb-2 text-slate-800" onclick="editSingleText('facility-title-3', '施設名')">お風呂・寛ぎの空間</h3>
+                            <p id="facility-desc-3" class="admin-editable-text text-stone-600 text-sm leading-relaxed" onclick="editSingleText('facility-desc-3', '説明文')">旅の疲れを心地よく癒していただける清潔なお風呂をご用意しております。</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="location" class="fade-in scroll-mt-24 draggable-section">
+                <div class="text-center mb-12">
+                    <span class="text-amber-800 font-bold text-xs tracking-[0.2em] uppercase">LOCATION & ACCESS</span>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-800 mt-2">所在地・アクセス</h2>
+                    <div class="w-12 h-0.5 bg-amber-800/40 mx-auto mt-4"></div>
+                </div>
+
+                <div class="bg-white p-8 rounded-lg shadow-sm border border-stone-200 space-y-8">
+                    <div class="grid md:grid-cols-2 gap-8 items-start">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-stone-200 flex items-center gap-2">📍 所在地・お問合せ</h3>
+                            <p class="text-stone-800 font-medium text-lg mb-3">住所: <span id="address-text" class="admin-editable-text" onclick="editSingleText('address-text', '住所')">青森県下北郡佐井村佐井糠森33-4</span></p>
+                            <p id="access-desc" class="admin-editable-text text-stone-600 text-sm leading-relaxed whitespace-pre-line" onclick="editSingleText('access-desc', '交通アクセス案内')">【お車でお越しの場合】〇〇ICより約00分（無料駐車場完備）
+【公共交通機関でお越しの場合】〇〇駅よりバスにて約00分</p>
+                        </div>
+                        <div class="bg-amber-50/60 p-6 rounded border border-amber-200/60 text-slate-800 text-sm space-y-3">
+                            <p class="font-bold border-b border-amber-200 pb-2 text-amber-900">💡 周辺おすすめスポット</p>
+                            <p id="spots-desc" class="admin-editable-text leading-relaxed whitespace-pre-line text-stone-700" onclick="editSingleText('spots-desc', '周辺スポット')">・夕陽が美しい海岸まで徒歩すぐ
+・地元の新鮮な魚介が味わえるお食事処あり
+・車で15分圏内に日帰り温泉施設あり</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-6 border-t border-stone-200">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">🗺️ アクセスマップ (Google Map)</h3>
+                            <button id="btn-edit-map" onclick="editMapCode()" class="hidden text-xs bg-stone-100 hover:bg-stone-200 px-3 py-1.5 rounded border border-stone-300 font-sans">🗺️ 地図コードを変更</button>
+                        </div>
+                        <div id="map-container" class="w-full h-80 sm:h-96 rounded border border-stone-300 overflow-hidden shadow-inner"></div>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <footer class="bg-stone-900 text-stone-300 text-center py-10 mt-auto border-t border-stone-800">
+        <p class="text-sm tracking-widest">© <span id="footer-site-title">わたしの民泊</span> All Rights Reserved me</p>
+    </footer>
+
+    <script>
+        let isAdmin = false;
+        let sortableInstance = null;
+        let slideIndex = 0;
+        const defaultMapIframe = `<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3240.233077759616!2d139.6633649!3d35.7082352!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x6018f28fb875ad0b%3A0x82b998634127c514!2z44CSMTY0LTAwMDEgR1RP5p2x5Lqs6YO95Lit6YeO5Yy65Lit6YeOMS0yLTM!5e0!3m2!1sja!2sjp!4v1700000000000!5m2!1sja!2sjp" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy"></iframe>`;
+
+        // スライドショーのアニメーション定義（5秒ごとに切替）
+        function startSlideshow() {
+            const slides = document.querySelectorAll('.hero-slide');
+            if (slides.length === 0) return;
+            setInterval(() => {
+                slides[slideIndex].classList.remove('active');
+                slideIndex = (slideIndex + 1) % slides.length;
+                slides[slideIndex].classList.add('active');
+            }, 5000);
+        }
+
+        // スライド画像のCSS適用
+        function setSlideBg(slideId, url) {
+            const el = document.getElementById(slideId);
+            if (el) {
+                el.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35)), url('${url}')`;
+            }
+        }
+
+        function getSlideBgUrl(slideId) {
+            const el = document.getElementById(slideId);
+            if (!el) return '';
+            const match = el.style.backgroundImage.match(/url\(['"]?(.*?)['"]?\)/);
+            return match ? match[1] : '';
+        }
+
+        // 1. 保存されたデータの反映
+        function loadData() {
+            const saved = localStorage.getItem('minpaku_miyano_style_v2');
+            if (saved) {
+                const data = JSON.parse(saved);
+                
+                // セクション順の復元
+                if (data.sectionOrder && data.sectionOrder.length > 0) {
+                    const container = document.getElementById('content-sections');
+                    const sectionsMap = {};
+                    document.querySelectorAll('#content-sections > .draggable-section').forEach(sec => {
+                        sectionsMap[sec.id] = sec;
+                    });
+                    data.sectionOrder.forEach(id => {
+                        if (sectionsMap[id]) container.appendChild(sectionsMap[id]);
+                    });
+                }
+
+                // テキストの復元
+                Object.keys(data.texts || {}).forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.innerText = data.texts[id];
+                });
+
+                // スライドショー画像の復元
+                if (data.slides) {
+                    if (data.slides.slide1) setSlideBg('slide-1', data.slides.slide1);
+                    if (data.slides.slide2) setSlideBg('slide-2', data.slides.slide2);
+                    if (data.slides.slide3) setSlideBg('slide-3', data.slides.slide3);
+                }
+
+                // 施設画像の復元
+                Object.keys(data.images || {}).forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el && el.tagName === 'IMG') el.src = data.images[id];
+                });
+
+                // 地図の復元
+                if (data.mapCode) {
+                    document.getElementById('map-container').innerHTML = data.mapCode;
+                } else {
+                    document.getElementById('map-container').innerHTML = defaultMapIframe;
+                }
+            } else {
+                document.getElementById('map-container').innerHTML = defaultMapIframe;
+            }
+            document.getElementById('footer-site-title').innerText = document.getElementById('site-title').innerText;
+        }
+
+        // 2. タップで編集できる各種アクション
+        function editHeroSlides() {
+            if (!isAdmin) return;
+            const url1 = prompt('トップ写真 1枚目の画像URL:', getSlideBgUrl('slide-1'));
+            if (url1 === null) return;
+            const url2 = prompt('トップ写真 2枚目の画像URL:', getSlideBgUrl('slide-2'));
+            if (url2 === null) return;
+            const url3 = prompt('トップ写真 3枚目の画像URL:', getSlideBgUrl('slide-3'));
+            if (url3 === null) return;
+
+            if (url1.trim()) setSlideBg('slide-1', url1.trim());
+            if (url2.trim()) setSlideBg('slide-2', url2.trim());
+            if (url3.trim()) setSlideBg('slide-3', url3.trim());
+        }
+
+        function editSingleText(elementId, labelName) {
+            if (!isAdmin) return;
+            const el = document.getElementById(elementId);
+            const current = el.innerText;
+            const newText = prompt(`【${labelName}】を変更してください:`, current);
+            if (newText !== null && newText.trim() !== '') {
+                el.innerText = newText;
+                if (elementId === 'site-title') {
+                    document.getElementById('footer-site-title').innerText = newText;
+                }
+            }
+        }
+
+        function editPhoneNumber(e) {
+            if (!isAdmin) return;
+            e.preventDefault();
+            const el = document.getElementById('phone-number');
+            const newPhone = prompt('新しい電話番号を入力してください:', el.innerText);
+            if (newPhone !== null && newPhone.trim() !== '') {
+                el.innerText = newPhone;
+                const clean = newPhone.replace(/[^0-9]/g, '');
+                document.getElementById('phone-link').href = 'tel:' + clean;
+            }
+        }
+
+        function editCardImg(imgId, labelName) {
+            if (!isAdmin) return;
+            const el = document.getElementById(imgId);
+            const newUrl = prompt(`【${labelName}】の画像URLを入力してください:`, el.src);
+            if (newUrl !== null && newUrl.trim() !== '') {
+                el.src = newUrl;
+            }
+        }
+
+        function editMapCode() {
+            if (!isAdmin) return;
+            const container = document.getElementById('map-container');
+            const newCode = prompt('GoogleマップでコピーしたHTMLコード（<iframe...）を貼り付けてください:', container.innerHTML);
+            if (newCode !== null && newCode.trim() !== '') {
+                container.innerHTML = newCode;
+            }
+        }
+
+        // 3. データ保存ロジック
+        function saveChanges() {
+            const data = {
+                texts: {},
+                images: {},
+                slides: {
+                    slide1: getSlideBgUrl('slide-1'),
+                    slide2: getSlideBgUrl('slide-2'),
+                    slide3: getSlideBgUrl('slide-3')
+                },
+                sectionOrder: [],
+                mapCode: document.getElementById('map-container').innerHTML
+            };
+
+            document.querySelectorAll('#content-sections > .draggable-section').forEach(sec => {
+                if (sec.id) data.sectionOrder.push(sec.id);
+            });
+
+            document.querySelectorAll('.admin-editable-text').forEach(el => {
+                data.texts[el.id] = el.innerText;
+            });
+
+            data.images['facility-img-1'] = document.getElementById('facility-img-1').src;
+            data.images['facility-img-2'] = document.getElementById('facility-img-2').src;
+            data.images['facility-img-3'] = document.getElementById('facility-img-3').src;
+
+            localStorage.setItem('minpaku_miyano_style_v2', JSON.stringify(data));
+            alert('画面の変更・スライドショー設定・並び替えを保存しました！');
+        }
+
+        // 4. ドラッグ＆ドロップ（並び替え）の初期化
+        function enableDragAndDrop() {
+            const container = document.getElementById('content-sections');
+            if (sortableInstance) sortableInstance.destroy();
+            sortableInstance = new Sortable(container, {
+                animation: 200,
+                handle: '.draggable-section',
+                ghostClass: 'opacity-50'
+            });
+        }
+
+        // 5. 管理者認証ロジック
+        function checkAdminHash() {
+            if (window.location.hash === '#admin') {
+                if (!isAdmin) {
+                    document.getElementById('admin-modal').classList.remove('hidden');
+                }
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const pass = document.getElementById('login-password').value;
+            if (pass === 'admin123') {
+                isAdmin = true;
+                document.getElementById('admin-modal').classList.add('hidden');
+                document.getElementById('admin-bar').classList.remove('hidden');
+                document.getElementById('btn-edit-map').classList.remove('hidden');
+                document.body.classList.add('is-admin');
+                enableDragAndDrop();
+                alert('管理者としてログインしました。\n・トップ画像をタップしてスライド写真3枚を変更できます。\n・文字や写真をタップして直接書き換えできます。');
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        function closeAdminModal() {
+            document.getElementById('admin-modal').classList.add('hidden');
+            window.location.hash = '';
+        }
+
+        function handleLogout() {
+            isAdmin = false;
+            document.body.classList.remove('is-admin');
+            document.getElementById('admin-bar').classList.add('hidden');
+            document.getElementById('btn-edit-map').classList.add('hidden');
+            window.location.hash = '';
+            location.reload();
+        }
+
+        // 6. アニメーション（IntersectionObserver）
+        function initScrollAnimation() {
+            const fadeElements = document.querySelectorAll('.fade-in');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            fadeElements.forEach(el => observer.observe(el));
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            checkAdminHash();
+            initScrollAnimation();
+            startSlideshow();
+            window.addEventListener('hashchange', checkAdminHash);
+        });
+    </script>
+</body>
+</html>
